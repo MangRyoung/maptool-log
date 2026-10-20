@@ -94,7 +94,46 @@
  /* ?oremas=방ID 로 열면 저장소가 준비된 뒤 바로 불러온다 */
  const q=new URLSearchParams(location.search).get('oremas');
  if(q){$$('omRoom').value=q;const wait=()=>{if(document.querySelector('#logList'))setTimeout(()=>importRoom(q,opt()),400);else setTimeout(wait,200)};wait()}
- window.OM_LOG_IMPORT={importRoom,convert,roomIdOf};
+ /* ----- 오레마스에서 내보낸 HTML · TXT 도 「로그 파일 추가」 · 끌어 놓기 · 붙여넣기로 읽는다 -----
+    새 파일: <script id="oremas-log"> 의 원본 줄 · 초상을 그대로 쓴다. 옛 파일: 말풍선 꼴(.m .bub .who .av)을 읽는다. TXT: 「[날짜 시각] 이름: 말」의 날짜를 떼서 원래 파서에 넘긴다 */
+ const isOmHtml=t=>/<meta name="generator" content="oremas">|id="oremas-log"|· 오레마스<\/small><\/h1>/.test(t);
+ const isOmTxt=t=>/^﻿?\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\] /.test(t);
+ const bgUrl=el=>{const m=(el&&el.getAttribute('style')||'').match(/url\(['"]?([^'")]+)['"]?\)/);return m?m[1]:''};
+ function fromPack(p){const o={dice:true,battle:true,sms:true};const msgs=(p.rows||[]).map(r=>convert(r,o,Object.fromEntries(Object.entries(p.trainers||{}).map(([k,v])=>[k,{name:v}])))).filter(Boolean);
+  const por={};for(const m of msgs){if(!m.name||por[m.name]!==undefined)continue;const base=m.name.replace(/^📱 /,'');por[m.name]=(p.por||{})[m._as||base]||(p.por||{})[base]||''}
+  return {title:`${p.name||p.room||'오레마스'} · 오레마스${p.exported?' '+p.exported.slice(0,10):''}`,msgs,por}}
+ function fromDom(doc){const msgs=[],por={};
+  doc.querySelectorAll('.wrap > .m').forEach(el=>{const tm=(el.querySelector('.tm')||{}).textContent||'';const base={id:nid(),ts:tm.trim()};
+   if(el.classList.contains('sys')){msgs.push({...base,type:'sys',tokens:textToks((el.querySelector('.bub')||el).textContent.trim())});return}
+   const card=el.querySelector('.card');
+   if(card){const tag=(card.querySelector('.tag')||{}).textContent||'',ttl=(card.querySelector('b')||{}).textContent||'';const tk=[{t:'text',v:`【${tag}】 `,b:true},{t:'text',v:ttl,b:true}];
+    card.querySelectorAll('.bl').forEach(x=>tk.push({t:'br'},{t:'text',v:x.textContent}));const eff=card.querySelector('.eff');if(eff)tk.push({t:'br'},...textToks(eff.textContent,{i:true}));msgs.push({...base,type:'sys',tokens:tk});return}
+   const bub=el.querySelector('.bub');if(!bub)return;const who=((bub.querySelector('.who')||{}).textContent||'').trim();
+   const c=bub.cloneNode(true);c.querySelectorAll('.who').forEach(x=>x.remove());const imgs=[...c.querySelectorAll('img')].map(i=>i.getAttribute('src')).filter(Boolean);c.querySelectorAll('a,img').forEach(x=>x.remove());const text=c.textContent.trim();
+   if(el.classList.contains('dice')){const m=text.match(/^(.*?)\s*=\s*([^=]+)$/);msgs.push({...base,name:who,type:'say',tokens:m?[{t:'roll',expr:m[1].trim(),res:m[2].trim()}]:textToks(text)})}
+   else{const tk=el.classList.contains('narr')?textToks(text,{i:true}):textToks(text);imgs.forEach(u=>{if(tk.length)tk.push({t:'br'});tk.push({t:'link',href:u,v:'[그림]'})});
+    const type=el.classList.contains('whisper')?'whisper':el.classList.contains('narr')?'emote':'say';const nm=el.classList.contains('sms')?`📱 ${who}`:who;msgs.push({...base,name:nm,type,tokens:tk})}
+   const nm=msgs[msgs.length-1].name;if(nm&&!por[nm]){const u=bgUrl(el.querySelector('.av'));if(u)por[nm]=u}});
+  const h=doc.querySelector('h1');const title=h?h.childNodes[0].textContent.trim():'오레마스';return {title:`${title} · 오레마스`,msgs,por}}
+ async function addOremas(item){const doc=new DOMParser().parseFromString(item.text,'text/html');const pk=doc.getElementById('oremas-log');let r;
+  if(pk){try{r=fromPack(JSON.parse(pk.textContent))}catch(e){r=null}}if(!r)r=fromDom(doc);
+  if(!r.msgs.length)return false;const pr=await linkPortraits(r.por,r.msgs);r.msgs.forEach(m=>{delete m._k;delete m._as;delete m._from});
+  if(!speakerCfg.GM){speakerCfg.GM=Object.assign({},cfg('GM'),{gm:true});saveCfg()}
+  if(sampleMode){logs=[];sel.clear();sampleMode=false;sampleKeys.forEach(k=>mem.imgs.delete(k))}
+  const l={id:nid(),title:item.title&&!/로그_\d{4}/.test(item.title)?item.title:r.title,msgs:r.msgs,order:logs.length};logs.push(l);saveLog(l);return {l,pr}}
+ const origAdd=addLogs;
+ addLogs=async function(items){const rest=[],done=[];let pr=0;
+  for(const it of items){if(it&&it.text&&isOmHtml(it.text)){const x=await addOremas(it);if(x){done.push(x.l);pr+=x.pr.ok;continue}}
+   if(it&&it.text&&isOmTxt(it.text))it.text=it.text.replace(/^﻿/,'').replace(/^\[\d{4}-\d{2}-\d{2} (\d{2}:\d{2})\] /gm,'[$1] ');
+   rest.push(it)}
+  if(rest.length)await origAdd(rest);
+  if(done.length){if(!rest.length)sel=new Set(done.map(l=>l.id));else done.forEach(l=>sel.add(l.id));if(typeof spkCache!=='undefined'&&spkCache.clear)spkCache.clear();renderAll();toast(`오레마스 로그 ${done.length}개 추가 · 초상 ${pr}명`)}};
+ /* 올린 그림: 「[그림]」 링크를 그 자리에서 그림으로 보인다 (인라인 스타일이라 「HTML 복사」에도 그대로) */
+ const origRender=renderLog;
+ renderLog=function(){origRender.apply(this,arguments);const box=document.getElementById('log');if(!box)return;
+  box.querySelectorAll('a[href]').forEach(a=>{if(a.dataset.omImg||a.textContent.trim()!=='[그림]')return;a.dataset.omImg='1';const u=a.getAttribute('href');
+   a.textContent='';const im=document.createElement('img');im.src=u;im.alt='그림';im.loading='lazy';im.setAttribute('style','display:block;max-width:min(360px,100%);max-height:360px;border-radius:8px;margin:4px 0;border:1px solid rgba(127,127,127,.25)');im.onerror=()=>{im.remove();a.textContent='[그림]'};a.appendChild(im)})};
+ window.OM_LOG_IMPORT={importRoom,convert,roomIdOf,addOremas};
 })();
 </script>
 <!-- ===== 오레마스 연동 끝 ===== -->
