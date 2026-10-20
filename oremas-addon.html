@@ -17,6 +17,21 @@
     <p class="hint">대사 · 지문 · 주사위 · 배틀 카드(효과 본문 포함)를 그대로 옮기고, 화자 초상을 방의 시트 그림으로 이어 준다. 귓속말은 공개되지 않아 빠진다.</p>
   </section>
 </template>
+<template id="omViewTpl">
+  <section class="panel" id="omView">
+    <h2>보기 설정</h2>
+    <div class="omv"><label>테마</label><select id="ovTheme"><option value="auto">시스템 따라</option><option value="light">밝게</option><option value="dark">어둡게</option><option value="paper">종이</option><option value="night">밤 (짙은 남색)</option></select></div>
+    <div class="omv"><label>본문 글꼴</label><select id="ovBody"><option value="plex">IBM Plex Sans KR</option><option value="noto">Noto Sans KR</option><option value="pretendard">Pretendard</option><option value="nanumg">나눔고딕</option><option value="gowund">고운돋움</option><option value="myeongjo">나눔명조</option></select></div>
+    <div class="omv"><label>제목 · 이름 글꼴</label><select id="ovHead"><option value="batang">고운바탕</option><option value="myeongjo">나눔명조</option><option value="blackhan">Black Han Sans</option><option value="dohyeon">도현</option><option value="same">본문과 같게</option></select></div>
+    <div class="omv"><label>글씨 크기 <b id="ovSizeV"></b></label><input type="range" id="ovSize" min="12" max="22" step="1"></div>
+    <div class="omv"><label>줄 간격 <b id="ovLineV"></b></label><input type="range" id="ovLine" min="1.3" max="2.2" step="0.05"></div>
+    <div class="omv"><label>초상 크기 <b id="ovAvV"></b></label><input type="range" id="ovAv" min="28" max="120" step="2"></div>
+    <div class="omv"><label>초상 모양</label><select id="ovShape"><option value="token">토큰 그대로</option><option value="round">둥글게 잘라서</option><option value="square">네모로 잘라서</option></select></div>
+    <div class="row" style="margin-top:6px"><button class="btn" type="button" id="ovReset">기본으로</button></div>
+    <p class="hint">이 브라우저에 기억되고, 「HTML 복사」로 내보낸 파일에도 그대로 들어간다.</p>
+  </section>
+</template>
+<style>.omv{display:flex;flex-direction:column;gap:2px;margin:6px 0}.omv label{font-size:.8rem;color:var(--muted)}.omv label b{color:var(--fg);font-weight:600;margin-left:4px}.omv select,.omv input[type=range]{width:100%}</style>
 <script>
 (()=>{
  const OM={url:'https://jsnvqcvwspxzfnhdethl.supabase.co',key:'sb_publishable_HDcgWnb1QS1P6GOiBPqdAA_yBJNhU7R'};
@@ -133,6 +148,33 @@
  renderLog=function(){origRender.apply(this,arguments);const box=document.getElementById('log');if(!box)return;
   box.querySelectorAll('a[href]').forEach(a=>{if(a.dataset.omImg||a.textContent.trim()!=='[그림]')return;a.dataset.omImg='1';const u=a.getAttribute('href');
    a.textContent='';const im=document.createElement('img');im.src=u;im.alt='그림';im.loading='lazy';im.setAttribute('style','display:block;max-width:min(360px,100%);max-height:360px;border-radius:8px;margin:4px 0;border:1px solid rgba(127,127,127,.25)');im.onerror=()=>{im.remove();a.textContent='[그림]'};a.appendChild(im)})};
+ /* ----- 보기 설정: #logcss 앞뒤에 덧붙여서 화면과 「HTML 복사」 모두에 먹게 한다 ----- */
+ (()=>{const vt=$$('omViewTpl');const op=$$('omPanel')||document.querySelector('.rail .panel');if(vt&&op)op.after(vt.content.cloneNode(true));
+  const st=$$('logcss');if(!st)return;const BASE=st.textContent;
+  const block=re=>{const m=BASE.match(re);return m?m[1]:''};
+  const LIGHT=block(/:root\{([^}]*--bg:[^}]*)\}/),DARK=block(/:root\[data-theme="dark"\]\{([^}]*)\}/);
+  const THEMES={paper:'--bg:#efe7d6;--surface:#fbf6ea;--fg:#2b2418;--muted:#7a6c55;--line:#e2d6bd;--accent:#8a4b1f;--accent-ink:#fff;--roll-bg:#f3e3c2;--roll-fg:#6b4a12;--roll-line:#e0c895;--whisper:#7a4f9a;--ooc:#9a8d74;--gm-bg:#f1e8d4;--bgm:#2f6b4f;--bgm-bg:#e4efe4;--spk-s:48%;--spk-l:34%;--spk-bg-l:90%;color-scheme:light',
+   night:'--bg:#0b1020;--surface:#121a33;--fg:#e6e9f5;--muted:#93a0c4;--line:#24305a;--accent:#8fb4ff;--accent-ink:#0b1020;--roll-bg:#26213a;--roll-fg:#f2d48f;--roll-line:#3f3660;--whisper:#c7a5f0;--ooc:#7d88aa;--gm-bg:#18224a;--bgm:#7fd6c3;--bgm-bg:#12302e;--spk-s:64%;--spk-l:76%;--spk-bg-l:22%;color-scheme:dark'};
+  const FONTS={plex:['"IBM Plex Sans KR"',''],noto:['"Noto Sans KR"','https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap'],pretendard:['"Pretendard"','https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css'],nanumg:['"Nanum Gothic"','https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700&display=swap'],gowund:['"Gowun Dodum"','https://fonts.googleapis.com/css2?family=Gowun+Dodum&display=swap'],myeongjo:['"Nanum Myeongjo"','https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@400;700&display=swap'],
+   batang:['"Gowun Batang"',''],blackhan:['"Black Han Sans"','https://fonts.googleapis.com/css2?family=Black+Han+Sans&display=swap'],dohyeon:['"Do Hyeon"','https://fonts.googleapis.com/css2?family=Do+Hyeon&display=swap']};
+  const DEF={theme:'auto',body:'plex',head:'batang',size:15,line:1.65,av:48,shape:'token'};
+  let V=Object.assign({},DEF);try{Object.assign(V,JSON.parse(localStorage.getItem('om-view')||'{}'))}catch(e){}
+  const save=()=>{try{localStorage.setItem('om-view',JSON.stringify(V))}catch(e){}};
+  function apply(){const imp=[],ov=[];const R=':root:root:root';
+   const bf=FONTS[V.body]||FONTS.plex,hf=V.head==='same'?bf:(FONTS[V.head]||FONTS.batang);[bf[1],hf[1]].filter(Boolean).forEach(u=>{if(!imp.includes(u))imp.push(u)});
+   if(V.theme==='light')ov.push(`${R}{${LIGHT};color-scheme:light}`);else if(V.theme==='dark')ov.push(`${R}{${DARK};color-scheme:dark}`);else if(THEMES[V.theme])ov.push(`${R}{${THEMES[V.theme]}}`);
+   if(V.body!=='plex')ov.push(`${R}{--f-body:${bf[0]},"Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif}`);
+   if(V.head!=='batang')ov.push(`${R}{--f-display:${hf[0]},${bf[0]},serif}`);
+   if(+V.size!==15||+V.line!==1.65)ov.push(`body,.log{font-size:${+V.size}px;line-height:${+V.line}}`);
+   const a=+V.av||48,a0=Math.round(a*.75);if(a!==48)ov.push(`.grp{grid-template-columns:${a0}px minmax(0,1fr)}.grp.big{grid-template-columns:${a}px minmax(0,1fr)}.av{width:${a0}px;height:${a0}px;font-size:${Math.max(.8,a0/38).toFixed(2)}rem}.av.img{width:${a}px;height:${a}px}`);
+   if(V.shape!=='token')ov.push(`.av.img .tk{background-size:cover;border-radius:${V.shape==='round'?'50%':'10%'};filter:none;box-shadow:0 0 0 1px var(--line)}`);
+   st.textContent=imp.map(u=>`@import url("${u}");`).join('')+BASE+(ov.length?'\n/* 보기 설정 */\n'+ov.join('\n'):'');
+   const root=document.documentElement;if(V.theme==='light'||V.theme==='paper')root.dataset.theme='light';else if(V.theme==='dark'||V.theme==='night')root.dataset.theme='dark';else delete root.dataset.theme;
+   $$('ovSizeV').textContent=V.size+'px';$$('ovLineV').textContent=(+V.line).toFixed(2);$$('ovAvV').textContent=V.av+'px'}
+  const bind=(id,k,num)=>{const el=$$(id);if(!el)return;el.value=V[k];el.oninput=el.onchange=()=>{V[k]=num?+el.value:el.value;save();apply()}};
+  bind('ovTheme','theme');bind('ovBody','body');bind('ovHead','head');bind('ovSize','size',1);bind('ovLine','line',1);bind('ovAv','av',1);bind('ovShape','shape');
+  $$('ovReset').onclick=()=>{V=Object.assign({},DEF);save();['ovTheme','ovBody','ovHead','ovSize','ovLine','ovAv','ovShape'].forEach(id=>{const el=$$(id);const k={ovTheme:'theme',ovBody:'body',ovHead:'head',ovSize:'size',ovLine:'line',ovAv:'av',ovShape:'shape'}[id];if(el)el.value=V[k]});apply()};
+  apply()})();
  window.OM_LOG_IMPORT={importRoom,convert,roomIdOf,addOremas};
 })();
 </script>
