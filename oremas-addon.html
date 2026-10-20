@@ -1,0 +1,100 @@
+<!-- ===== 오레마스 연동 (덧붙임) =====
+  오레마스(https://mangryoung.github.io/oremas/) 방의 로그를 읽어 이 정리기의 로그로 넣는다.
+  - 읽기만 한다. 오레마스와 같은 Supabase 프로젝트의 공개 키로 om_rooms · om_log · om_state 를 읽는다 (귓속말은 서버가 내주지 않는다).
+  - 화자 초상은 방의 로스터(트레이너·포켓몬)와 관계도 그림에서 가져와 「토큰 이미지」로 연결한다.
+  - 주소에 ?oremas=방ID 를 붙여 열면 바로 불러온다 (오레마스의 「💾 로그 → 정리기에서 열기」). -->
+<template id="omPanelTpl">
+  <section class="panel" id="omPanel">
+    <h2>오레마스 방 불러오기</h2>
+    <div class="row"><input type="text" id="omRoom" placeholder="방 링크나 방 ID (예: …/oremas/#r=abcd1234)" style="flex:1;min-width:0" autocomplete="off"></div>
+    <div class="row" style="flex-wrap:wrap;gap:4px 12px;margin-top:6px">
+      <label class="small"><input type="checkbox" id="omDice" checked> 주사위</label>
+      <label class="small"><input type="checkbox" id="omBattle" checked> 배틀 · 시스템</label>
+      <label class="small"><input type="checkbox" id="omSms"> 휴대폰 문자</label>
+      <label class="small"><input type="checkbox" id="omCut"> 비운 로그도</label>
+    </div>
+    <div class="row" style="margin-top:6px"><button class="btn primary" type="button" id="omGo">불러오기</button><span class="hint" id="omMsg" style="margin:0"></span></div>
+    <p class="hint">대사 · 지문 · 주사위 · 배틀 카드(효과 본문 포함)를 그대로 옮기고, 화자 초상을 방의 시트 그림으로 이어 준다. 귓속말은 공개되지 않아 빠진다.</p>
+  </section>
+</template>
+<script>
+(()=>{
+ const OM={url:'https://jsnvqcvwspxzfnhdethl.supabase.co',key:'sb_publishable_HDcgWnb1QS1P6GOiBPqdAA_yBJNhU7R'};
+ const $$=id=>document.getElementById(id);
+ /* 패널: 「로그 목록」 다음에 끼운다 */
+ const tpl=$$('omPanelTpl');const first=document.querySelector('.rail .panel');
+ if(tpl&&first)first.after(tpl.content.cloneNode(true));
+ const say=t=>{const e=$$('omMsg');if(e)e.textContent=t};
+
+ async function rest(path){const r=await fetch(`${OM.url}/rest/v1/${path}`,{headers:{apikey:OM.key,Accept:'application/json'}});if(!r.ok)throw new Error(`${r.status} ${(await r.text()).slice(0,120)}`);return r.json()}
+ function roomIdOf(s){s=String(s||'').trim();const m=s.match(/[#?&]r=([A-Za-z0-9_-]+)/)||s.match(/^([A-Za-z0-9_-]{4,})$/);return m?m[1]:''}
+ const hm=at=>{const d=new Date(at);return isNaN(d)?'':`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`};
+ const day=at=>{const d=new Date(at);return isNaN(d)?'':`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
+ /* 여러 줄 글 → 텍스트/줄바꿈 토큰 */
+ function textToks(str,fmt){const out=[];String(str||'').split('\n').forEach((ln,i)=>{if(i)out.push({t:'br'});if(ln)out.push({t:'text',v:ln,...(fmt||{})})});return out}
+
+ /* 오레마스 로그 한 줄 → 정리기 메시지 (null 이면 뺀다) */
+ function convert(r,o,T){const d=r.data||{};let kind=r.kind;if(kind==='chat'&&d.bat)kind=d.bat;T=T||{};
+  const base={id:nid(),ts:hm(r.at)};
+  if(kind==='whisper')return null;
+  if(kind==='sys'){if(!o.battle)return null;return {...base,type:'sys',tokens:textToks(d.t)}}
+  if(kind==='dice'){if(!o.dice)return null;const t=String(d.t||'');const m=t.match(/^(.*?)\s*=\s*([^=]+)$/);return {...base,name:(T[d.from]&&T[d.from].name)||r.who||'',type:'say',tokens:m?[{t:'roll',expr:m[1].trim(),res:m[2].trim()}]:textToks(t)}}
+  if(kind==='battle'){if(!o.battle)return null;const t=String(d.t||'');const m=t.match(/^【([^】]+)】\s*([^\n]*)\n?([\s\S]*)$/);
+   const tk=m?[{t:'text',v:`【${m[1]}】 `,b:true},{t:'text',v:m[2],b:true},...(m[3].trim()?[{t:'br'},...textToks(m[3].trim())]:[])]:textToks(t);
+   if(d.eff){tk.push({t:'br'},...textToks(String(d.eff).trim(),{i:true}))}
+   return {...base,type:'sys',tokens:tk}}
+  if(kind==='chat'){if(d.clear||d.room)return null;if(d.sms&&!o.sms)return null;
+   if(!d.t&&!d.img)return null;const name=(d.as||r.who||'').trim();
+   const narr=/^\*([\s\S]+)\*$/.exec(String(d.t||'').trim());
+   const tk=narr?textToks(narr[1],{i:true}):textToks(d.t);
+   if(d.img){if(tk.length)tk.push({t:'br'});tk.push({t:'link',href:d.img,v:'[그림]'})}
+   return {...base,name:d.sms?`📱 ${name}`:name,type:narr?'emote':'say',tokens:tk,_k:d.k||'',_as:d.as||'',_from:d.from||''}}
+  return null}
+
+ /* 화자 이름 → 그림 주소 (로스터 · 관계도 · 스탠딩) */
+ function portraitMap(state,msgs){const ro=state.roster||{};const T=ro.trainers||{},M=ro.mons||{};const N=Object.values((state.graph||{}).nodes||{});
+  const stand=x=>{const s=(x&&x.stands)||[];const a=s[+x.standActive||0]||s[0];return a&&a.src||''};
+  const byName=n=>{const t=Object.values(T).find(x=>x.name===n);if(t)return t.image||stand(t);const m=Object.values(M).find(x=>x.name===n&&x.image);if(m)return m.image;const g=N.find(x=>x.name===n);return g?(g.img||stand(g)):''};
+  const out={};
+  for(const m of msgs){if(!m.name||out[m.name]!==undefined)continue;let u='';const k=m._k;
+   if(k&&k.startsWith('pm:')){const mm=M[k.slice(3)];u=mm&&mm.image||''}
+   else if(k&&k.startsWith('npc:'))u=byName(k.slice(4));
+   else if(k&&k!=='gm'&&k!=='me'&&T[k])u=T[k].image||stand(T[k]);
+   if(!u)u=byName(m._as||m.name.replace(/^📱 /,''));
+   if(!u&&m._from&&T[m._from])u=T[m._from].image||stand(T[m._from]);
+   out[m.name]=u||''}
+  return out}
+ async function linkPortraits(map,msgs){let ok=0,fail=0;
+  for(const [name,u] of Object.entries(map)){if(!u)continue;const key='o'+kc(u.length+u.slice(-300));
+   try{if(!mem.imgs.has(key)){const r=await fetch(u);if(!r.ok)throw 0;const b=await shrinkBlob(await r.blob());if(!b)throw 0;await put('imgs',key,b)}
+    nameMap[name]=key;msgs.forEach(m=>{if(m.name===name)m.asset=key});ok++}catch(e){fail++}}
+  await put('kv','names',nameMap);return {ok,fail}}
+
+ async function importRoom(raw,o){const id=roomIdOf(raw);if(!id){say('방 링크나 ID를 넣어 줘');return}
+  say('방을 읽는 중…');
+  try{
+   const [rooms,states]=await Promise.all([rest(`om_rooms?id=eq.${encodeURIComponent(id)}&select=id,name`),rest(`om_state?room=eq.${encodeURIComponent(id)}&select=data`)]);
+   if(!rooms.length){say('그런 방이 없다');return}
+   const state=(states[0]&&states[0].data)||{};const cut=o.cut?0:(+((state.rp||{}).logClearAt)||0);
+   let rows=[],after=cut;for(let i=0;i<100;i++){const page=await rest(`om_log?room=eq.${encodeURIComponent(id)}&id=gt.${after}&order=id.asc&limit=1000&select=id,at,kind,who,data`);if(!page.length)break;rows.push(...page);after=page[page.length-1].id;say(`로그 ${rows.length}줄 읽는 중…`);if(page.length<1000)break}
+   const msgs=rows.map(r=>convert(r,o,(state.roster||{}).trainers||{})).filter(Boolean);
+   if(!msgs.length){say('옮길 로그가 없다');return}
+   say('초상을 잇는 중…');const pm=portraitMap(state,msgs);const pr=await linkPortraits(pm,msgs);
+   msgs.forEach(m=>{delete m._k;delete m._as;delete m._from});
+   if(!speakerCfg.GM){speakerCfg.GM=Object.assign({},cfg('GM'),{gm:true});saveCfg()}
+   if(sampleMode){logs=[];sel.clear();sampleMode=false;sampleKeys.forEach(k=>mem.imgs.delete(k))}
+   const d0=day(rows[0].at),d1=day(rows[rows.length-1].at);
+   const l={id:nid(),title:`${rooms[0].name||id} · 오레마스 ${d0}${d1&&d1!==d0?' ~ '+d1:''}`,msgs,order:logs.length,src:{oremas:id}};
+   logs.push(l);saveLog(l);sel=new Set([l.id]);if(typeof spkCache!=='undefined'&&spkCache.clear)spkCache.clear();renderAll();
+   say(`${msgs.length}줄 · 초상 ${pr.ok}명${pr.fail?` (못 읽은 그림 ${pr.fail})`:''}`);toast(`오레마스 「${rooms[0].name||id}」 로그를 넣었어요`)
+  }catch(e){console.error(e);say('읽지 못했다: '+e.message)}}
+ const opt=()=>({dice:$$('omDice').checked,battle:$$('omBattle').checked,sms:$$('omSms').checked,cut:$$('omCut').checked});
+ $$('omGo').onclick=()=>importRoom($$('omRoom').value,opt());
+ $$('omRoom').onkeydown=e=>{if(e.key==='Enter'&&!e.isComposing)importRoom($$('omRoom').value,opt())};
+ /* ?oremas=방ID 로 열면 저장소가 준비된 뒤 바로 불러온다 */
+ const q=new URLSearchParams(location.search).get('oremas');
+ if(q){$$('omRoom').value=q;const wait=()=>{if(document.querySelector('#logList'))setTimeout(()=>importRoom(q,opt()),400);else setTimeout(wait,200)};wait()}
+ window.OM_LOG_IMPORT={importRoom,convert,roomIdOf};
+})();
+</script>
+<!-- ===== 오레마스 연동 끝 ===== -->
