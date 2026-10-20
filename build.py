@@ -1,4 +1,4 @@
-"""src/original.html(정리기 원본) + oremas-addon.html → index.html
+"""src/original.html(정리기 원본 = claude.ai 「맵툴 로그 정리기 (슬라임)」 판) + oremas-addon.html → index.html
 원본이 바뀌면 src/original.html 만 바꾸고 python build.py 를 다시 돌린다.
 
 합치면서 문서 구조도 바로잡는다 (원본 파일은 건드리지 않는다).
@@ -33,6 +33,9 @@ if m and 0 <= head_end < m.start():
         pos = mm.end()
     if moved:
         out = out[:head_end] + ''.join(moved) + out[head_end:m.end()] + out[pos:]
+
+# 4) 탭 제목: 바탕이 claude.ai 의 「… (슬라임)」 판이라 붙은 꼬리를 뗀다
+out = out.replace('<title>맵툴 로그 정리기 (슬라임)</title>', '<title>맵툴 로그 정리기</title>', 1)
 
 (root / 'index.html').write_text(out, encoding='utf-8')
 print('index.html', f'{len(out.encode("utf-8")):,} bytes', f'({len(out):,} chars)')
