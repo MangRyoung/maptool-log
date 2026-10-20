@@ -860,7 +860,7 @@ R('a1','GM','도윤은 처마를 타고 달려 골목 끝에 먼저 내려섭니
   const base={id:nid(),ts:hm(r.at)};
   if(kind==='whisper')return null;
   if(kind==='sys'){if(!o.battle)return null;return {...base,type:'sys',tokens:textToks(d.t)}}
-  if(kind==='dice'){if(!o.dice)return null;const t=String(d.t||'');const m=t.match(/^(.*?)\s*=\s*([^=]+)$/);return {...base,name:(T[d.from]&&T[d.from].name)||r.who||'',type:'say',tokens:m?[{t:'roll',expr:m[1].trim(),res:m[2].trim()}]:textToks(t)}}
+  if(kind==='dice'){if(!o.dice)return null;const t=String(d.t||'');const m=t.match(/^(.*?)\s*=\s*([^=]+)$/);return {...base,name:(T[d.from]&&T[d.from].name)||r.who||'',type:d.ch==='ooc'?'ooc':'say',tokens:m?[{t:'roll',expr:m[1].trim(),res:m[2].trim()}]:textToks(t)}}
   if(kind==='battle'){if(!o.battle)return null;const t=String(d.t||'');const m=t.match(/^【([^】]+)】\s*([^\n]*)\n?([\s\S]*)$/);
    const tk=m?[{t:'text',v:`【${m[1]}】 `,b:true},{t:'text',v:m[2],b:true},...(m[3].trim()?[{t:'br'},...textToks(m[3].trim())]:[])]:textToks(t);
    if(d.eff){tk.push({t:'br'},...textToks(String(d.eff).trim(),{i:true}))}
@@ -870,7 +870,8 @@ R('a1','GM','도윤은 처마를 타고 달려 골목 끝에 먼저 내려섭니
    const narr=/^\*([\s\S]+)\*$/.exec(String(d.t||'').trim());
    const tk=narr?textToks(narr[1],{i:true}):textToks(d.t);
    if(d.img&&SAFE_IMG.test(String(d.img))){if(tk.length)tk.push({t:'br'});tk.push({t:'link',href:String(d.img),v:'[그림]'})}
-   return {...base,name:d.sms?`📱 ${name}`:name,type:narr?'emote':'say',tokens:tk,_k:d.k||'',_as:d.as||'',_from:d.from||''}}
+   return {...base,name:d.sms?`📱 ${name}`:name,type:d.ch==='ooc'?'ooc':narr?'emote':'say',   /* 오레마스 잡담 창(ch:'ooc') → OOC: 「잡담」 표시 옵션으로 숨긴다 */
+   tokens:tk,_k:d.k||'',_as:d.as||'',_from:d.from||''}}
   return null}
 
  /* 화자 이름 → 그림 주소 (로스터 · 관계도 · 스탠딩) */
