@@ -639,7 +639,7 @@ function buildLog(log,{edit=false,exp=false,audio={}}={}){
   const spk=[...new Set(vis.filter(m=>m.name).map(m=>m.name))];
   const rolls=vis.reduce((n,m)=>n+(m.tokens||[]).filter(t=>t.t==='roll').length,0);
   const times=vis.map(m=>m.ts).filter(Boolean);
-  const meta=[`메시지 ${vis.filter(m=>m.type!=='bgm').length}개`,`화자 ${spk.length}명`,`주사위 ${rolls}회`,times.length?`${times[0]} – ${times.at(-1)}`:''].filter(Boolean).map(s=>`<span>${s}</span>`).join('');
+  const meta=[`메시지 ${vis.filter(m=>m.type!=='bgm').length}개`,`화자 ${spk.length}명`,`주사위 ${rolls}회`,times.length?`${esc(times[0])} – ${esc(times.at(-1))}`:''].filter(Boolean).map(s=>`<span>${s}</span>`).join('');
   const cast=spk.map(n=>{const k=resolve({name:n});return`<span style="--h:${cfg(n).h}">${k?`<i class="tk ${tkCls(k)}"></i>`:''}${esc(cfg(n).name)}</span>`}).join('');
   const html=`<header class="log-head"><h1 class="log-title"${exp?'':' id="titleEd" contenteditable="true" spellcheck="false" title="눌러서 제목 고치기"'}>${esc(log.title)}</h1><div class="log-meta">${meta}</div>${spk.length?`<details class="cast-box"${o.optCast?' open':''}><summary>등장인물 ${spk.length}명</summary><div class="cast">${cast}</div></details>`:''}</header>
 <div class="entries">${body||'<div class="empty">표시할 내용이 없어요.</div>'}</div>`;

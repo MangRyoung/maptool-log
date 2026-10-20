@@ -634,7 +634,7 @@ function buildLog(log,{edit=false,exp=false,audio={}}={}){
   const spk=[...new Set(vis.filter(m=>m.name).map(m=>m.name))];
   const rolls=vis.reduce((n,m)=>n+(m.tokens||[]).filter(t=>t.t==='roll').length,0);
   const times=vis.map(m=>m.ts).filter(Boolean);
-  const meta=[`메시지 ${vis.filter(m=>m.type!=='bgm').length}개`,`화자 ${spk.length}명`,`주사위 ${rolls}회`,times.length?`${times[0]} – ${times.at(-1)}`:''].filter(Boolean).map(s=>`<span>${s}</span>`).join('');
+  const meta=[`메시지 ${vis.filter(m=>m.type!=='bgm').length}개`,`화자 ${spk.length}명`,`주사위 ${rolls}회`,times.length?`${esc(times[0])} – ${esc(times.at(-1))}`:''].filter(Boolean).map(s=>`<span>${s}</span>`).join('');
   const cast=spk.map(n=>{const k=resolve({name:n});return`<span style="--h:${cfg(n).h}">${k?`<i class="tk ${tkCls(k)}"></i>`:''}${esc(cfg(n).name)}</span>`}).join('');
   const html=`<header class="log-head"><h1 class="log-title"${exp?'':' id="titleEd" contenteditable="true" spellcheck="false" title="눌러서 제목 고치기"'}>${esc(log.title)}</h1><div class="log-meta">${meta}</div>${spk.length?`<details class="cast-box"${o.optCast?' open':''}><summary>등장인물 ${spk.length}명</summary><div class="cast">${cast}</div></details>`:''}</header>
 <div class="entries">${body||'<div class="empty">표시할 내용이 없어요.</div>'}</div>`;
@@ -1308,7 +1308,7 @@ async function seedSample(){
   const picOf=el=>{if(!el)return null;const t=el.matches('.tk')?el:el.querySelector('.tk');if(!t)return null;const k=[...t.classList].find(c=>pics[c]);if(!k)return null;const u=pics[k];if(!/^data:image\//.test(u))return null;const key='d'+hashStr(u);if(!S.imgs[key])S.imgs[key]=u;return key};
   const lineToks=el=>{const c=el.cloneNode(true);c.querySelectorAll('.ts,.n,.tools,.del').forEach(x=>x.remove());return trimTokens(walk(c.querySelector('.tx')||c,{},[]))};
   const whoOf=el=>{const w=el&&el.querySelector('.who');if(!w)return{name:'',tag:''};const c=w.cloneNode(true);const tag=(c.querySelector('.tag')||{}).textContent||'';c.querySelectorAll('.ts,.tag,.tk').forEach(x=>x.remove());return{name:c.textContent.trim(),tag:tag.trim()}};
-  const tsOf=el=>((el.querySelector('.ts')||{}).textContent||'').trim()||null;
+  const tsOf=el=>((((el.querySelector('.ts')||{}).textContent||'').trim()).match(/^\d{1,2}:\d{2}(?::\d{2})?$/)||[null])[0];   /* 시각 칸은 HH:MM 꼴만 — 다른 글이 meta 줄에 HTML 로 들어가지 않게 */
   const out=[];
   const bgmOf=async b=>{const src=b.dataset.src||'',title=b.dataset.title||'BGM';const yt=b.querySelector('a[href]');
    if(/^data:audio\//i.test(src)){try{const aid=uid();const blob=dataToBlob(src);await idb.set('audio:'+aid,{name:title,blob});audioURL[aid]=URL.createObjectURL(blob);return{id:uid(),type:'bgm',title,audioId:aid}}catch(e){return null}}
@@ -1401,8 +1401,10 @@ async function seedSample(){
    if(d.eff)tk.push({t:'br'},...textToks(String(d.eff).trim(),{i:true}));
    return{...base,type:'sys',tokens:tk}}
   if(kind==='chat'){if(d.clear||d.room)return null;if(d.sms&&!o.sms)return null;
-   if(!d.t&&!d.img)return null;const name=(d.as||r.who||'').trim();
-   const narr=/^\*([\s\S]+)\*$/.exec(String(d.t||'').trim());
+   if(!d.t&&!d.img)return null;const name=(d.as||(!d.sms&&d.ch!=='ooc'&&d.from&&d.from!=='gm'&&T[d.from]&&T[d.from].name)||r.who||'').trim();   /* 좌석의 세션 대사는 플레이어 닉 대신 그 캐릭터 이름 */
+   const t0=String(d.t||'').trim();let narr=/^\*([\s\S]+)\*$/.exec(t0);
+   /* 오레마스 새 줄 규칙(data.nf=1, 2026-10-20~): 따옴표로 감싸지 않은 글은 지문 — 오레마스 lineFmt 와 같게. 옛 줄(nf 없음)은 *…* 만 지문 */
+   if(!narr&&d.nf&&d.ch!=='ooc'&&t0&&!/^["“「『][\s\S]*["”」』]$/.test(t0))narr=[t0,t0];
    const tk=narr?textToks(narr[1],{i:true}):textToks(d.t);
    if(d.img&&SAFE_SRC.test(String(d.img))){if(tk.length)tk.push({t:'br'});tk.push({t:'img',src:String(d.img)})}
    if(!tk.length)return null;
@@ -1516,7 +1518,7 @@ async function seedSample(){
   const por={};for(const m of msgs){if(!m.name||por[m.name]!==undefined)continue;const base=m.name.replace(/^📱 /,'');por[m.name]=(p.por||{})[m._as||base]||(p.por||{})[base]||''}
   return{title:`${p.name||p.room||'오레마스'} · 오레마스${p.exported?' '+p.exported.slice(0,10):''}`,msgs,por}}
  function fromDom(doc){const msgs=[],por={},o=opt();
-  doc.querySelectorAll('.wrap > .m').forEach(el=>{const tm=(el.querySelector('.tm')||{}).textContent||'';const base={id:uid(),ts:tm.trim()};
+  doc.querySelectorAll('.wrap > .m').forEach(el=>{const tm=(el.querySelector('.tm')||{}).textContent||'';const base={id:uid(),ts:(tm.trim().match(/^\d{1,2}:\d{2}(?::\d{2})?$/)||[''])[0]};
    if(el.classList.contains('sys')){if(!o.battle)return;const c=(el.querySelector('.bub')||el).cloneNode(true);c.querySelectorAll('.tm').forEach(x=>x.remove());msgs.push({...base,type:'sys',tokens:textToks(c.textContent.trim())});return}
    const card=el.querySelector('.card');
    if(card){if(!o.battle)return;const tag=(card.querySelector('.tag')||{}).textContent||'',ttl=(card.querySelector('b')||{}).textContent||'';const tk=[{t:'text',v:`【${tag}】 `,b:true},{t:'text',v:ttl,b:true}];
