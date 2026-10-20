@@ -842,6 +842,7 @@ R('a1','GM','도윤은 처마를 타고 달려 골목 끝에 먼저 내려섭니
 (()=>{
  const OM={url:'https://jsnvqcvwspxzfnhdethl.supabase.co',key:'sb_publishable_HDcgWnb1QS1P6GOiBPqdAA_yBJNhU7R'};
  const $$=id=>document.getElementById(id);
+ const SAFE_IMG=/^(https?:\/\/|data:image\/)/i;   /* 그림 주소는 http(s) · data:image 만 받는다 (javascript: 같은 주소가 링크가 되지 않게) */
  /* 패널: 「로그 목록」 다음에 끼운다 */
  const tpl=$$('omPanelTpl');const first=document.querySelector('.rail .panel');
  if(tpl&&first)first.after(tpl.content.cloneNode(true));
@@ -868,7 +869,7 @@ R('a1','GM','도윤은 처마를 타고 달려 골목 끝에 먼저 내려섭니
    if(!d.t&&!d.img)return null;const name=(d.as||r.who||'').trim();
    const narr=/^\*([\s\S]+)\*$/.exec(String(d.t||'').trim());
    const tk=narr?textToks(narr[1],{i:true}):textToks(d.t);
-   if(d.img){if(tk.length)tk.push({t:'br'});tk.push({t:'link',href:d.img,v:'[그림]'})}
+   if(d.img&&SAFE_IMG.test(String(d.img))){if(tk.length)tk.push({t:'br'});tk.push({t:'link',href:String(d.img),v:'[그림]'})}
    return {...base,name:d.sms?`📱 ${name}`:name,type:narr?'emote':'say',tokens:tk,_k:d.k||'',_as:d.as||'',_from:d.from||''}}
   return null}
 
@@ -891,7 +892,7 @@ R('a1','GM','도윤은 처마를 타고 달려 골목 끝에 먼저 내려섭니
     nameMap[name]=key;msgs.forEach(m=>{if(m.name===name)m.asset=key});ok++}catch(e){fail++}}
   await put('kv','names',nameMap);return {ok,fail}}
 
- async function importRoom(raw,o){const id=roomIdOf(raw);if(!id){say('방 링크나 ID를 넣어 줘');return}
+ async function importRoom(raw,o,auto){const id=roomIdOf(raw);if(!id){say('방 링크나 ID를 넣어 줘');return}
   say('방을 읽는 중…');
   try{
    const [rooms,states]=await Promise.all([rest(`om_rooms?id=eq.${encodeURIComponent(id)}&select=id,name`),rest(`om_state?room=eq.${encodeURIComponent(id)}&select=data`)]);
@@ -905,16 +906,23 @@ R('a1','GM','도윤은 처마를 타고 달려 골목 끝에 먼저 내려섭니
    if(!speakerCfg.GM){speakerCfg.GM=Object.assign({},cfg('GM'),{gm:true});saveCfg()}
    if(sampleMode){logs=[];sel.clear();sampleMode=false;sampleKeys.forEach(k=>mem.imgs.delete(k))}
    const d0=day(rows[0].at),d1=day(rows[rows.length-1].at);
-   const l={id:nid(),title:`${rooms[0].name||id} · 오레마스 ${d0}${d1&&d1!==d0?' ~ '+d1:''}`,msgs,order:logs.length,src:{oremas:id}};
-   logs.push(l);saveLog(l);sel=new Set([l.id]);if(typeof spkCache!=='undefined'&&spkCache.clear)spkCache.clear();renderAll();
-   say(`${msgs.length}줄 · 초상 ${pr.ok}명${pr.fail?` (못 읽은 그림 ${pr.fail})`:''}`);toast(`오레마스 「${rooms[0].name||id}」 로그를 넣었어요`)
+   const title=`${rooms[0].name||id} · 오레마스 ${d0}${d1&&d1!==d0?' ~ '+d1:''}`;
+   /* 같은 방을 이미 불러왔으면: 주소로 열 때(?oremas=)는 그 로그를 새로 고치고, 버튼으로 부를 때는 물어본다 */
+   const old=logs.find(x=>x.src&&x.src.oremas===id);
+   let l;if(old&&(auto||confirm(`「${old.title}」 을(를) 이미 불러왔어요.\n확인: 그 로그를 서버 내용으로 새로 고침 (고친 내용은 사라짐)\n취소: 새 로그로 하나 더 넣기`))){old.msgs=msgs;old.title=title;l=old;l._re=1}
+   else{l={id:nid(),title,msgs,order:logs.length,src:{oremas:id}};logs.push(l)}
+   const re=!!l._re;delete l._re;saveLog(l);sel=new Set([l.id]);if(typeof spkCache!=='undefined'&&spkCache.clear)spkCache.clear();renderAll();
+   say(`${msgs.length}줄 · 초상 ${pr.ok}명${pr.fail?` (못 읽은 그림 ${pr.fail})`:''}`);toast(`오레마스 「${rooms[0].name||id}」 로그를 ${re?'새로 고쳤어요':'넣었어요'}`)
   }catch(e){console.error(e);say('읽지 못했다: '+e.message)}}
  const opt=()=>({dice:$$('omDice').checked,battle:$$('omBattle').checked,sms:$$('omSms').checked,cut:$$('omCut').checked});
  $$('omGo').onclick=()=>importRoom($$('omRoom').value,opt());
  $$('omRoom').onkeydown=e=>{if(e.key==='Enter'&&!e.isComposing)importRoom($$('omRoom').value,opt())};
  /* ?oremas=방ID 로 열면 저장소가 준비된 뒤 바로 불러온다 */
  const q=new URLSearchParams(location.search).get('oremas');
- if(q){$$('omRoom').value=q;const wait=()=>{if(document.querySelector('#logList'))setTimeout(()=>importRoom(q,opt()),400);else setTimeout(wait,200)};wait()}
+ if(q){$$('omRoom').value=q;
+  /* 주소의 ?oremas= 는 한 번만 쓰고 지운다 — 새로고침해도 같은 로그가 또 생기지 않게 */
+  try{const u=new URL(location.href);u.searchParams.delete('oremas');history.replaceState(null,'',u.pathname+u.search+u.hash)}catch(e){}
+  const wait=()=>{if(document.querySelector('#logList'))setTimeout(()=>importRoom(q,opt(),true),400);else setTimeout(wait,200)};wait()}
  /* ----- 오레마스에서 내보낸 HTML · TXT 도 「로그 파일 추가」 · 끌어 놓기 · 붙여넣기로 읽는다 -----
     새 파일: <script id="oremas-log"> 의 원본 줄 · 초상을 그대로 쓴다. 옛 파일: 말풍선 꼴(.m .bub .who .av)을 읽는다. TXT: 「[날짜 시각] 이름: 말」의 날짜를 떼서 원래 파서에 넘긴다 */
  const isOmHtml=t=>/<meta name="generator" content="oremas">|id="oremas-log"|· 오레마스<\/small><\/h1>/.test(t);
@@ -952,7 +960,7 @@ R('a1','GM','도윤은 처마를 타고 달려 골목 끝에 먼저 내려섭니
  /* 올린 그림: 「[그림]」 링크를 그 자리에서 그림으로 보인다 (인라인 스타일이라 「HTML 복사」에도 그대로) */
  const origRender=renderLog;
  renderLog=function(){origRender.apply(this,arguments);const box=document.getElementById('log');if(!box)return;
-  box.querySelectorAll('a[href]').forEach(a=>{if(a.dataset.omImg||a.textContent.trim()!=='[그림]')return;a.dataset.omImg='1';const u=a.getAttribute('href');
+  box.querySelectorAll('a[href]').forEach(a=>{if(a.dataset.omImg||a.textContent.trim()!=='[그림]'||!SAFE_IMG.test(a.getAttribute('href')||''))return;a.dataset.omImg='1';const u=a.getAttribute('href');
    a.textContent='';const im=document.createElement('img');im.src=u;im.alt='그림';im.loading='lazy';im.setAttribute('style','display:block;max-width:min(360px,100%);max-height:360px;border-radius:8px;margin:4px 0;border:1px solid rgba(127,127,127,.25)');im.onerror=()=>{im.remove();a.textContent='[그림]'};a.appendChild(im)})};
  /* ----- 보기 설정: #logcss 앞뒤에 덧붙여서 화면과 「HTML 복사」 모두에 먹게 한다 ----- */
  (()=>{const vt=$$('omViewTpl');const op=$$('omPanel')||document.querySelector('.rail .panel');if(vt&&op)op.after(vt.content.cloneNode(true));
@@ -985,5 +993,94 @@ R('a1','GM','도윤은 처마를 타고 달려 골목 끝에 먼저 내려섭니
 })();
 </script>
 <!-- ===== 오레마스 연동 끝 ===== -->
+<!-- ===== 원본 보정 (src/original.html 은 그대로 두고 여기서 덮어쓴다) ===== -->
+<script>
+(()=>{
+ /* 1) 화자 판별: 「10:30」 같은 시각의 콜론을 이름 구분으로 읽지 않는다 (「Note at 10:30」 → 화자 「Note at 10」 이 되던 문제) */
+ takePrefix=function(tk){
+  let ts=null;
+  if(tk[0]&&tk[0].t==='text'){
+   let v=tk[0].v;
+   const tm=v.match(/^\s*\[?(\d{1,2}:\d{2}(?::\d{2})?)\]?\s*/);
+   if(tm){ts=tm[1];v=v.slice(tm[0].length)}
+   const vals=tk.map((t,j)=>j===0?{...t,v}:t);let acc='';
+   for(let i=0;i<vals.length&&vals[i].t==='text';i++){
+    acc+=vals[i].v;
+    const nm=acc.match(/^([^:：«»\n]{1,40}?)\s*[:：]\s?/);
+    if(nm){
+     const after=acc.slice(nm[0].length);
+     if(/\d$/.test(nm[1])&&/^\d/.test(acc.slice(nm[0].replace(/\s+$/,'').length)))break;   // 숫자:숫자 = 시각
+     return {ts,name:nm[1].trim(),tokens:trimTokens([{...vals[i],v:after},...vals.slice(i+1)])}}
+    if(acc.length>60)break;
+   }
+   return {ts,name:null,tokens:trimTokens(vals)};
+  }
+  return {ts,name:null,tokens:trimTokens(tk)};
+ };
+
+ /* 2) 정리기가 내보낸 HTML(「HTML 복사」)을 다시 넣으면 메시지·화자·초상을 그대로 되살린다 (전에는 메시지 하나로 뭉쳤다) */
+ function fromOwnExport(doc){
+  const css=[...doc.querySelectorAll('style')].map(x=>x.textContent).join('\n');const pics={};
+  css.replace(/\.(k[0-9a-z]+)\{background-image:url\("([^"]+)"\)\}/g,(_,k,u)=>{pics[k]=u;return ''});
+  const picOf=el=>{const t=el&&el.querySelector('.tk');if(!t)return '';const k=[...t.classList].find(c=>c!=='tk'&&pics[c]);return k?pics[k]:''};
+  const lineToks=el=>{const c=el.cloneNode(true);c.querySelectorAll('.ts,.n,.del').forEach(x=>x.remove());return trimTokens(walk(c.querySelector('.tx')||c,{},[]))};
+  const whoOf=el=>{const w=el&&el.querySelector('.who');if(!w)return {name:'',tag:''};const c=w.cloneNode(true);const tag=(c.querySelector('.tag')||{}).textContent||'';c.querySelectorAll('.ts,.tag,.tk').forEach(x=>x.remove());return {name:c.textContent.trim(),tag:tag.trim()}};
+  const tsOf=el=>((el.querySelector('.ts')||{}).textContent||'').trim()||null;
+  const out=[];
+  for(const g of doc.querySelectorAll('.entries > div')){
+   const ts=tsOf(g);
+   if(g.classList.contains('part'))continue;
+   if(g.classList.contains('sys')){g.querySelectorAll('.line').forEach(ln=>{const tokens=lineToks(ln);if(!tokens.length)return;const bgm=tokens.every(t=>t.t==='bgm'||t.t==='br');out.push({ts,name:null,type:bgm?'bgm':'sys',tokens})});continue}
+   const emote=g.querySelector('p.line.emote');
+   if(emote){const n=(emote.querySelector('b.n')||{}).textContent||'';const tokens=lineToks(emote);if(tokens.length)out.push({ts,name:n.trim()||null,type:'emote',tokens,src:picOf(g.querySelector('.av'))||undefined});continue}
+   const {name,tag}=whoOf(g);const wh=/^귓속말/.test(tag),ooc=tag==='OOC';
+   const to=wh?(tag.match(/→\s*(.+)$/)||[])[1]||'':undefined;
+   const pic=picOf(g.querySelector('.av'))||picOf(g.querySelector('.who'));
+   g.querySelectorAll('p.line').forEach((ln,i)=>{const tokens=lineToks(ln);if(!tokens.length)return;const m={ts:i?null:ts,name:name||null,type:wh?'whisper':ooc?'ooc':'say',tokens};if(wh)m.to=to.trim();if(pic)m.src=pic;out.push(m)});
+  }
+  return out;
+ }
+
+ /* 3) 표 형식 로그: 이름 칸에서 화자를 찾았으면 본문 앞의 「…:」 를 자르지 않는다
+       (「규칙: 판정은…」 → 「판정은…」, 「오후 3:30에」 → 「30에」 로 잘리던 문제). 본문이 같은 이름으로 시작할 때만 뗀다 */
+ parseHTML=function(raw){
+  const doc=new DOMParser().parseFromString(raw,'text/html');
+  if(doc.querySelector('main .entries')&&doc.getElementById('bgmbar')){const own=fromOwnExport(doc);if(own.length)return own.map(m=>classifyOwn(m))}
+  doc.querySelectorAll('script,style,head,title').forEach(n=>n.remove());
+  let blocks=[...doc.body.children];
+  while(blocks.length===1&&blocks[0].tagName!=='TABLE'&&blocks[0].children.length>1)blocks=[...blocks[0].children];
+  if(blocks.length<=1){const html=(blocks[0]||doc.body).innerHTML;blocks=html.split(/<br\s*\/?>/i).map(h=>{const d=doc.createElement('div');d.innerHTML=h;return d})}
+  const out=[];
+  for(const el of blocks){
+   if(!el.textContent.trim()&&!el.querySelector('audio,iframe,embed,video'))continue;
+   const tds=el.tagName==='TABLE'||el.querySelector('table')?[...el.querySelectorAll('td')]:[];
+   let m;
+   if(tds.length>=2){
+    const body=tds.at(-1);
+    const nameCell=tds.slice(0,-1).reverse().find(td=>td.textContent.trim());
+    let ts=null,name=nameCell?nameCell.textContent.trim().replace(/[:：]\s*$/,''):null;
+    const tm=name&&name.match(/^\[?(\d{1,2}:\d{2}(?::\d{2})?)\]?\s*/);if(tm){ts=tm[1];name=name.slice(tm[0].length)}
+    const toks=walk(body,{},[]);
+    let inner=takePrefix(toks);
+    if(name&&inner.name!==name){const t0=toks[0]&&toks[0].t==='text'?toks[0].v:'';const tm2=t0.match(/^\s*\[?(\d{1,2}:\d{2}(?::\d{2})?)\]\s*/);
+     inner={ts:tm2?tm2[1]:null,name:null,tokens:trimTokens(tm2?[{...toks[0],v:t0.slice(tm2[0].length)},...toks.slice(1)]:toks)}}
+    m={ts:ts||inner.ts,name:name||inner.name,tokens:inner.tokens};
+   } else m=takePrefix(walk(el,{},[]));
+   const img=el.querySelector('img');
+   if(img){const src=img.getAttribute('src')||'';const a=src.match(/asset:\/\/([0-9a-z]+)/i);if(a)m.asset=a[1].toLowerCase();else if(/^data:image\//.test(src))m.src=src}
+   if(m.tokens.length)out.push(classify(m));
+  }
+  return out;
+ };
+ /* 내보낸 파일에서 되살린 메시지는 종류가 이미 정해져 있다. src(data:)는 addLogs 가 이미지로 저장한다 */
+ function classifyOwn(m){if(!m.src)delete m.src;if(m.type==='say'&&!m.name)return classify(m);return m}
+
+ /* 4) 편집 모드에서 그림이 든 줄을 고쳐도 그림이 URL 글자로 바뀌지 않게: 화면에 그림으로 바꿔 둔 링크를 「[그림]」 으로 읽는다 */
+ const origWalk=walk;
+ walk=function(node,fmt,out){
+  if(node&&node.querySelector&&node.querySelector('a[data-om-img]')){node=node.cloneNode(true);node.querySelectorAll('a[data-om-img]').forEach(a=>{a.textContent='[그림]'})}
+  return origWalk(node,fmt,out)};
+})();
+</script>
 
 </body></html>
